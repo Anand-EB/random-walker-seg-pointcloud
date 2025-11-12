@@ -10,11 +10,12 @@ def random_walker_segmentation(
     *,
     sigma1: float = 1.0,
     sigma2: float = 1.0,
+    min_weight: float = 0.0001,
     n_proc: int = -1,
     return_flat: bool = True
 ) -> list[list[int]] | np.ndarray: 
     indices = _pc_rwalker.random_walker_segmentation(
-        xyz, seed_indices, n_neighbors, sigma1, sigma2, n_proc
+        xyz, seed_indices, n_neighbors, sigma1, sigma2, min_weight, n_proc
     )
 
     if not return_flat:

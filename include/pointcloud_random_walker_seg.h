@@ -29,8 +29,10 @@ namespace detail {
     inline std::tuple<Edges, Eigen::VectorXd> computeEdgesAndWeights(
         const Points3d &xyz,
         const int n_neighbors,
+        const int n_threads,
         const double sigma1 = 1.0, // smoothing of distance weight
-        const double sigma2 = 1.0 // smoothing of normal weight
+        const double sigma2 = 1.0, // smoothing of normal weight
+        const double min_weight = 0.0001
     ) {
         
         int n_vertices = xyz.rows();
@@ -40,9 +42,11 @@ namespace detail {
         Eigen::MatrixX3d normals(n_vertices, 3);
 
         { // kdtree scope
+            std::vector<int> num_didnt_find_self(n_threads);
+
             KdTree kdtree(3 /*dim*/, std::cref(xyz), 10 /* max leaf */);
-            #pragma omp parallel for schedule(dynamic)
-            for (int point_idx = 0; point_idx < xyz.rows(); ++point_idx) {
+            #pragma omp parallel for schedule(dynamic) num_threads(n_threads) if(n_threads > 1)
+            for (int point_idx = 0; point_idx < n_vertices; ++point_idx) {
                 Eigen::Vector3d pt = xyz.block<1, 3>(point_idx, 0).transpose();
                 
                 // will return n_neighbors + query point
@@ -53,20 +57,24 @@ namespace detail {
                 std::vector<double> search_pt({pt[0], pt[1], pt[2]});
                 kdtree.index_->knnSearch(pt.data(), n_neighbors + 1, neighbor_idxs.data(), neighbor_sq_dists.data());
                 
+                bool found_self = false;
+
                 // Estimate normals from the neighborhood's covariance matrix
                 Points3d neighborhood(n_neighbors + 1, 3);
                 int nonquery_point_idx = 0;
                 for (int local_neighbor_idx = 0; local_neighbor_idx < neighbor_idxs.size(); ++local_neighbor_idx) {
                     int global_neighbor_idx = neighbor_idxs[local_neighbor_idx];
-                    neighborhood.block<1, 3>(local_neighbor_idx, 0) = xyz.block<1, 3>(global_neighbor_idx, 0);
+                    neighborhood.row(local_neighbor_idx) = xyz.row(global_neighbor_idx);
 
                     // While we're at it, also build the graph
-                    if (global_neighbor_idx != point_idx) {
+                    if (global_neighbor_idx == point_idx) {
+                        found_self = true;
+                    } else if (nonquery_point_idx < n_neighbors) {
                         sq_distsances(point_idx, nonquery_point_idx) = neighbor_sq_dists[local_neighbor_idx];
                         edges[point_idx * n_neighbors + nonquery_point_idx] = {point_idx, global_neighbor_idx};
                         ++nonquery_point_idx;
                     }
-                }        
+                }
                 neighborhood = neighborhood.rowwise() - neighborhood.colwise().mean();
                 Eigen::Matrix3d cov = (neighborhood.transpose() * neighborhood) / static_cast<double>(neighbor_idxs.size());
                 Eigen::EigenSolver<Eigen::Matrix3d> eigensolver(cov, Eigen::ComputeEigenvectors);
@@ -78,17 +86,32 @@ namespace detail {
                 Eigen::Vector3d normal = eigensolver.eigenvectors().real().block<3, 1>(0, argmin);
                 normal = normal / (normal.norm() + EPS);
                 normals.block<1, 3>(point_idx, 0) = normal;
+
+                if (!found_self) {
+                    ++num_didnt_find_self[omp_get_thread_num()];
+                }
             }
+
+            int total_didnt_find_self = 0;
+            for (int n : num_didnt_find_self) {
+                total_didnt_find_self += n;
+            }
+            if (total_didnt_find_self > 0) {
+                std::cout << total_didnt_find_self << " points were not in their own " << n_neighbors
+                << " nearest neighbors. The given point cloud may have excessive duplicate points,"
+                " leading to a singular Laplacian. Remove duplicate points of increase number of neighbors."
+                << std::endl;
+            } 
         } // exit kdtree scope
 
         // Lai et al. (2009), Eqn. (12)
         Eigen::VectorXd dist_weights(n_edges);
         Eigen::VectorXd normal_weights(n_edges);
-        
+
         Eigen::VectorXd average_sq_dists = sq_distsances.rowwise().mean();
-        #pragma omp parallel for schedule(static)
+        #pragma omp parallel for schedule(static) num_threads(n_threads) if(n_threads > 1)
         for (int edge_idx = 0; edge_idx < edges.size(); ++edge_idx) {
-            auto [i, j] = edges[edge_idx];
+            const auto [i, j] = edges[edge_idx];
             Eigen::Vector3d pt_i, pt_j, norm_i, norm_j;
             pt_i = xyz.block<1, 3>(i, 0);
             pt_j = xyz.block<1, 3>(j, 0);
@@ -107,7 +130,7 @@ namespace detail {
                 (pt_j - pt_i) - (pt_j - pt_i).dot(norm_i) * norm_i
             ).dot(norm_j) > 0;
             double norm_dist_scale = is_convex ? 1.0 : 0.2; 
-            double normal_dist = norm_dist_scale * (norm_i - norm_j).squaredNorm();
+            double normal_dist = norm_dist_scale / 2.0 * (norm_i - norm_j).squaredNorm();
 
             normal_weights[edge_idx] = normal_dist;
         }
@@ -121,6 +144,9 @@ namespace detail {
         normal_weights = (-normal_weights / (sigma2 * normal_weights.mean() + EPS)).array().exp();
         
         Eigen::VectorXd weights = dist_weights.array() * normal_weights.array();
+        if (min_weight > 0.0) {
+            weights = weights.cwiseMax(min_weight);
+        }
 
         // free memory
         dist_weights.resize(0, 1);
@@ -203,17 +229,13 @@ inline std::vector<std::vector<int>> randomWalkerSegmentation(
     const Points3d &xyz,
     const std::vector<std::vector<int>> &seed_indices,
     const int n_neighbors,
-    const double sigma1 = 1.0, // smoothing of distance weight
-    const double sigma2 = 1.0, // smoothing of normal weight
-    const int n_proc = -1      // -1 for all processors, 0 or 1 for no OMP
+    const double sigma1 = 1.0,        // smoothing of distance weight
+    const double sigma2 = 1.0,        // smoothing of normal weight
+    const double min_weight = 0.0001, // to avoid singular Laplacians
+    const int n_proc = -1             // -1 for all processors, 0 or 1 for no OMP
 ) {
-    if (n_proc > 0) {
-        omp_set_num_threads(n_proc);
-    } else if (n_proc == 0) {
-        omp_set_num_threads(1);
-    } else {
-        omp_set_num_threads(omp_get_max_threads());
-    }
+    const int n_threads = (n_proc < 0) ? omp_get_max_threads()
+        : std::max(1, std::min(omp_get_max_threads(), n_proc));
     
     Points3d xyz_marked_first(xyz.rows(), xyz.cols());
     std::vector<int> original_to_marked_first(xyz.rows(), -1);
@@ -236,7 +258,9 @@ inline std::vector<std::vector<int>> randomWalkerSegmentation(
         }
     }
 
-    auto [edges, weights] = detail::computeEdgesAndWeights(xyz_marked_first, n_neighbors);
+    auto [edges, weights] = detail::computeEdgesAndWeights(
+        xyz_marked_first, n_neighbors, n_threads, sigma1, sigma2, min_weight
+    );
 
     // Constitutive matrix is a diagonal matrix with edge weights on the diagonal
     detail::SparseMatrixd C = detail::buildConstitutiveMatrix(weights);
