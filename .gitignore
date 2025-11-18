@@ -2,3 +2,8 @@
 build/
 __pycache__/
 *.egginfo
+
+
+example/seed_bunny.laz
+example/seg_bunny.laz
+example/seg_bunny_new.laz

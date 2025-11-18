@@ -12,6 +12,26 @@ This repository contains a **C++ header-only** implementation and **Python wrapp
 
 ## Installation
 
+### Docker (Recommended)
+
+To build the docker container
+
+```
+make build-docker
+```
+
+To run the docker container (in an interactive way)
+```
+make run-docker
+```
+
+To stop and clean up the container
+```
+make clean-docker
+```
+
+### System
+
 This package's C++ dependencies are: `Eigen3`, `OpenMP` and `pybind11`. They can be installed via conda:
 
 ```bash
