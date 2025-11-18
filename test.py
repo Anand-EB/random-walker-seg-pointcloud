@@ -3,7 +3,7 @@ from pathlib import Path
 import laspy
 import numpy as np
 
-from pc_rwalker import random_walker_segmentation, random_walker_segmentation_new
+from pc_rwalker import random_walker_segmentation, random_walker_segmentation_gc
 from time import perf_counter
 
 
@@ -63,17 +63,17 @@ def run_benchmark():
 
         las.write(bunny.with_stem(f'seed_bunny_{run_idx}'))
 
-        print("Running New algorithm...")
+        print("Running Geometry-central algorithm...")
         start_time = perf_counter()
-        idx_new = random_walker_segmentation_new(
+        idx_new = random_walker_segmentation_gc(
             las.xyz, bunny_seeds, n_neighbors, n_proc=1
         )
         end_time = perf_counter()
-        print(f"New algorithm: {end_time - start_time:.6f} seconds")
+        print(f"Geometry-central algorithm: {end_time - start_time:.6f} seconds")
 
         print("Running Legacy algorithm...")
         las.classification = idx_new
-        las.write(bunny.with_stem(f'seg_bunny_new_{run_idx}'))
+        las.write(bunny.with_stem(f'seg_bunny_gc_{run_idx}'))
 
         start_time = perf_counter()
         idx = random_walker_segmentation(

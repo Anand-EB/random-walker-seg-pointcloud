@@ -4,7 +4,7 @@
 #include <pybind11/stl.h>
 
 #include <pointcloud_random_walker_seg.h>
-#include <pc_randseg_new.h>
+#include <pc_randseg_gc.h>
 
 
 namespace py = pybind11;
@@ -23,15 +23,15 @@ PYBIND11_MODULE(_pc_rwalker, m) {
         py::arg("n_proc") = -1
     );
 
-    m.def("random_walker_segmentation_new",
-        [](const pc_rwalker_new::Points3d &xyz,
+    m.def("random_walker_segmentation_gc",
+        [](const pc_rwalker_gc::Points3d &xyz,
            const std::vector<std::vector<int>> &seed_indices,
            int n_neighbors,
            double sigma1,
            double sigma2,
            double min_weight,
            int n_proc) {
-            return pc_rwalker_new::randomWalkerSegmentation(
+            return pc_rwalker_gc::randomWalkerSegmentation(
                 xyz,
                 seed_indices,
                 n_neighbors,

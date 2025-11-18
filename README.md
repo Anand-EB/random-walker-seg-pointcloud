@@ -16,7 +16,9 @@ This repository contains a **C++ header-only** implementation and **Python wrapp
 
 To build the docker container
 
-```
+```bash
+git clone --recursive https://github.com/kasparas-k/random-walker-seg-pointcloud.git
+cd random-walker-seg-pointcloud
 make build-docker
 ```
 

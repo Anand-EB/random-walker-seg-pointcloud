@@ -28,7 +28,7 @@ def random_walker_segmentation(
     return flat_idx
 
 
-def random_walker_segmentation_new(
+def random_walker_segmentation_gc(
     xyz: np.ndarray,
     seed_indices: list[list[int]],
     n_neighbors: int,
@@ -39,7 +39,7 @@ def random_walker_segmentation_new(
     n_proc: int = -1,
     return_flat: bool = True
 ) -> list[list[int]] | np.ndarray: 
-    indices = _pc_rwalker.random_walker_segmentation_new(
+    indices = _pc_rwalker.random_walker_segmentation_gc(
         xyz, seed_indices, n_neighbors, sigma1, sigma2, min_weight, n_proc
     )
 
