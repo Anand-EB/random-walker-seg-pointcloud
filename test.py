@@ -66,7 +66,7 @@ def run_benchmark():
         print("Running Geometry-central algorithm...")
         start_time = perf_counter()
         idx_new = random_walker_segmentation_gc(
-            las.xyz, bunny_seeds, n_neighbors, n_proc=1
+            las.xyz, bunny_seeds, n_neighbors
         )
         end_time = perf_counter()
         print(f"Geometry-central algorithm: {end_time - start_time:.6f} seconds")

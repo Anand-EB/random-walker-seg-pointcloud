@@ -116,7 +116,7 @@ inline std::vector<std::vector<int>> groupByLabel(
 
 } // namespace detail
 
-inline SegResult randomWalkerSegmentation(
+inline std::vector<std::vector<int>> randomWalkerSegmentation(
     const Points3d& xyz,
     const std::vector<std::vector<int>>& seeds,
     int n_neighbors = 30
@@ -149,7 +149,7 @@ inline SegResult randomWalkerSegmentation(
         result.probabilities = probs;
         result.labels = info.label;
         result.segments = seeds;
-        return result;
+        return result.segments;
     }
 
     // Partition Laplacian: L = [L_uu  L_us]
@@ -224,7 +224,7 @@ inline SegResult randomWalkerSegmentation(
         );
     }
 
-    return result;
+    return result.segments;
 }
 
 } // namespace pc_rwalker_gc
