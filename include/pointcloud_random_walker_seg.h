@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <Eigen/Dense>
+#include <Eigen/Eigenvalues>
 #include <Eigen/Sparse>
 #include <Eigen/SparseLU>
 #include <omp.h>
@@ -47,7 +48,7 @@ namespace detail {
             KdTree kdtree(3 /*dim*/, std::cref(xyz), 10 /* max leaf */);
             #pragma omp parallel for schedule(dynamic) num_threads(n_threads) if(n_threads > 1)
             for (int point_idx = 0; point_idx < n_vertices; ++point_idx) {
-                Eigen::Vector3d pt = xyz.block<1, 3>(point_idx, 0).transpose();
+                Eigen::Vector3d pt = xyz.row(point_idx);
                 
                 // will return n_neighbors + query point
                 // need to check matches to remove the query point later
@@ -77,15 +78,15 @@ namespace detail {
                 }
                 neighborhood = neighborhood.rowwise() - neighborhood.colwise().mean();
                 Eigen::Matrix3d cov = (neighborhood.transpose() * neighborhood) / static_cast<double>(neighbor_idxs.size());
-                Eigen::EigenSolver<Eigen::Matrix3d> eigensolver(cov, Eigen::ComputeEigenvectors);
+                Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigensolver(cov, Eigen::ComputeEigenvectors);
 
-                Eigen::Vector3d eigenvalues = eigensolver.eigenvalues().real();
+                Eigen::Vector3d eigenvalues = eigensolver.eigenvalues();
                 int argmin;
                 eigenvalues.minCoeff(&argmin);               
 
-                Eigen::Vector3d normal = eigensolver.eigenvectors().real().block<3, 1>(0, argmin);
+                Eigen::Vector3d normal = eigensolver.eigenvectors().col(argmin);
                 normal = normal / (normal.norm() + EPS);
-                normals.block<1, 3>(point_idx, 0) = normal;
+                normals.row(point_idx) = normal;
 
                 if (!found_self) {
                     ++num_didnt_find_self[omp_get_thread_num()];
@@ -113,10 +114,10 @@ namespace detail {
         for (int edge_idx = 0; edge_idx < edges.size(); ++edge_idx) {
             const auto [i, j] = edges[edge_idx];
             Eigen::Vector3d pt_i, pt_j, norm_i, norm_j;
-            pt_i = xyz.block<1, 3>(i, 0);
-            pt_j = xyz.block<1, 3>(j, 0);
-            norm_i = normals.block<1, 3>(i, 0);
-            norm_j = normals.block<1, 3>(j, 0);
+            pt_i = xyz.row(i);
+            pt_j = xyz.row(j);
+            norm_i = normals.row(i);
+            norm_j = normals.row(j);
             
             double dist_weight = std::exp(
                 -sq_distsances(i, edge_idx % n_neighbors) / (average_sq_dists[i] * sigma1 + EPS)
@@ -242,7 +243,7 @@ inline std::vector<std::vector<int>> randomWalkerSegmentation(
     int remapped_idx = 0;
     for (std::vector<int> idxs_for_seed : seed_indices) {
         for (int marked_idx : idxs_for_seed) {
-            xyz_marked_first.block<1, 3>(remapped_idx, 0) = xyz.block<1, 3>(marked_idx, 0);
+            xyz_marked_first.row(remapped_idx) = xyz.row(marked_idx);
             original_to_marked_first[marked_idx] = remapped_idx;
             remapped_idx++;
         }
@@ -252,7 +253,7 @@ inline std::vector<std::vector<int>> randomWalkerSegmentation(
     // for all remaining unmarked points, insert them sequentially
     for (int original_idx = 0; original_idx < xyz.rows(); ++original_idx) {
         if (original_to_marked_first[original_idx] < 0) {
-            xyz_marked_first.block<1, 3>(remapped_idx, 0) = xyz.block<1, 3>(original_idx, 0);
+            xyz_marked_first.row(remapped_idx) = xyz.row(original_idx);
             original_to_marked_first[original_idx] = remapped_idx;
             remapped_idx++;
         }
