@@ -2,11 +2,12 @@
 
 #include <Eigen/Core>
 #include <Eigen/Sparse>
-#include <Eigen/SparseLU>
+#include <Eigen/SparseCholesky>
 #include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <vector>
+#include <chrono>
 
 #include <geometrycentral/pointcloud/point_cloud.h>
 #include <geometrycentral/pointcloud/point_position_geometry.h>
@@ -123,15 +124,19 @@ inline std::vector<std::vector<int>> randomWalkerSegmentation(
 ) {
     using namespace geometrycentral;
 
+    auto start_time = std::chrono::steady_clock::now();
+
     // Build geometry and compute Laplacian
     auto [cloud, geom] = detail::buildGeometry(xyz, n_neighbors);
     geom->requireLaplacian();
     const auto& L = geom->laplacian;
+    auto finish_time = std::chrono::steady_clock::now();
+    std::cout << "Time taken to build geometry and compute Laplacian: " << std::chrono::duration_cast<std::chrono::milliseconds>(finish_time - start_time).count() << " milliseconds" << std::endl;
 
+    start_time = std::chrono::steady_clock::now();
     const size_t n = cloud->nPoints();
     const int k = seeds.size();
     const auto info = detail::buildSeedInfo(n, seeds);
-
     // Initialize probabilities: seeds have probability 1.0 for their class
     Eigen::MatrixXd probs = Eigen::MatrixXd::Zero(n, k);
     for (size_t c = 0; c < seeds.size(); ++c) {
@@ -139,6 +144,9 @@ inline std::vector<std::vector<int>> randomWalkerSegmentation(
             probs(i, c) = 1.0;
         }
     }
+
+    finish_time = std::chrono::steady_clock::now();
+    std::cout << "Time taken to initialize probabilities: " << std::chrono::duration_cast<std::chrono::milliseconds>(finish_time - start_time).count() << " milliseconds" << std::endl;
 
     // Count unseeded points
     const int n_unseed = n - info.n_seeds;
@@ -152,6 +160,7 @@ inline std::vector<std::vector<int>> randomWalkerSegmentation(
         return result.segments;
     }
 
+    start_time = std::chrono::steady_clock::now();
     // Partition Laplacian: L = [L_uu  L_us]
     //                          [L_su  L_ss]
     // We solve: L_uu * x_u = -L_us * x_s
@@ -179,22 +188,34 @@ inline std::vector<std::vector<int>> randomWalkerSegmentation(
     L_uu.setFromTriplets(uu_triplets.begin(), uu_triplets.end());
     L_us.setFromTriplets(us_triplets.begin(), us_triplets.end());
 
-    // Build seed indicator matrix
-    Eigen::MatrixXd seed_probs = Eigen::MatrixXd::Zero(info.n_seeds, k);
+    // Build seed indicator matrix as sparse to reduce memory when seeds are few
+    std::vector<Eigen::Triplet<double>> seed_triplets;
+    seed_triplets.reserve(info.n_seeds);
     for (size_t i = 0; i < n; ++i) {
-        if (info.seed_order[i] >= 0) {
-            seed_probs(info.seed_order[i], info.label[i]) = 1.0;
+        const int seed_idx = info.seed_order[i];
+        if (seed_idx >= 0) {
+            seed_triplets.emplace_back(seed_idx, info.label[i], 1.0);
         }
     }
+    Eigen::SparseMatrix<double> seed_probs(info.n_seeds, k);
+    seed_probs.setFromTriplets(seed_triplets.begin(), seed_triplets.end());
 
-    // Solve the linear system
-    Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
+    finish_time = std::chrono::steady_clock::now();
+    std::cout << "Time taken to build seed indicator matrix: " << std::chrono::duration_cast<std::chrono::milliseconds>(finish_time - start_time).count() << " milliseconds" << std::endl;
+
+    start_time = std::chrono::steady_clock::now();
+
+    // Solve the linear system using an SPD-specific solver
+    using LaplacianSolver = Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>>;
+    LaplacianSolver solver;
     solver.compute(L_uu);
     if (solver.info() != Eigen::Success) {
         throw std::runtime_error("Failed to factorize Laplacian");
     }
 
-    Eigen::MatrixXd unseed_probs = solver.solve(-L_us * seed_probs);
+    Eigen::SparseMatrix<double> rhs_sparse = L_us * seed_probs;
+    Eigen::MatrixXd rhs = -Eigen::MatrixXd(rhs_sparse);
+    Eigen::MatrixXd unseed_probs = solver.solve(rhs);
     if (solver.info() != Eigen::Success) {
         throw std::runtime_error("Failed to solve linear system");
     }
@@ -205,6 +226,11 @@ inline std::vector<std::vector<int>> randomWalkerSegmentation(
             probs.row(i) = unseed_probs.row(info.unseed_order[i]);
         }
     }
+
+    finish_time = std::chrono::steady_clock::now();
+    std::cout << "Time taken to solve linear system: " << std::chrono::duration_cast<std::chrono::milliseconds>(finish_time - start_time).count() << " milliseconds" << std::endl;
+
+    start_time = std::chrono::steady_clock::now();
 
     // Normalize and extract labels
     detail::normalizeProbabilities(probs);
@@ -223,6 +249,9 @@ inline std::vector<std::vector<int>> randomWalkerSegmentation(
             new_segments[c].end()
         );
     }
+
+    finish_time = std::chrono::steady_clock::now();
+    std::cout << "Time taken to build final segments: " << std::chrono::duration_cast<std::chrono::milliseconds>(finish_time - start_time).count() << " milliseconds" << std::endl;
 
     return result.segments;
 }
