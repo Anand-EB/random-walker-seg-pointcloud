@@ -124,16 +124,16 @@ inline std::vector<std::vector<int>> randomWalkerSegmentation(
 ) {
     using namespace geometrycentral;
 
-    auto start_time = std::chrono::steady_clock::now();
+    // auto start_time = std::chrono::steady_clock::now();
 
     // Build geometry and compute Laplacian
     auto [cloud, geom] = detail::buildGeometry(xyz, n_neighbors);
     geom->requireLaplacian();
     const auto& L = geom->laplacian;
-    auto finish_time = std::chrono::steady_clock::now();
-    std::cout << "Time taken to build geometry and compute Laplacian: " << std::chrono::duration_cast<std::chrono::milliseconds>(finish_time - start_time).count() << " milliseconds" << std::endl;
+    // auto finish_time = std::chrono::steady_clock::now();
+    // std::cout << "Time taken to build geometry and compute Laplacian: " << std::chrono::duration_cast<std::chrono::milliseconds>(finish_time - start_time).count() << " milliseconds" << std::endl;
 
-    start_time = std::chrono::steady_clock::now();
+    // start_time = std::chrono::steady_clock::now();
     const size_t n = cloud->nPoints();
     const int k = seeds.size();
     const auto info = detail::buildSeedInfo(n, seeds);
@@ -145,8 +145,8 @@ inline std::vector<std::vector<int>> randomWalkerSegmentation(
         }
     }
 
-    finish_time = std::chrono::steady_clock::now();
-    std::cout << "Time taken to initialize probabilities: " << std::chrono::duration_cast<std::chrono::milliseconds>(finish_time - start_time).count() << " milliseconds" << std::endl;
+    // finish_time = std::chrono::steady_clock::now();
+    // std::cout << "Time taken to initialize probabilities: " << std::chrono::duration_cast<std::chrono::milliseconds>(finish_time - start_time).count() << " milliseconds" << std::endl;
 
     // Count unseeded points
     const int n_unseed = n - info.n_seeds;
@@ -160,7 +160,7 @@ inline std::vector<std::vector<int>> randomWalkerSegmentation(
         return result.segments;
     }
 
-    start_time = std::chrono::steady_clock::now();
+    // start_time = std::chrono::steady_clock::now();
     // Partition Laplacian: L = [L_uu  L_us]
     //                          [L_su  L_ss]
     // We solve: L_uu * x_u = -L_us * x_s
@@ -200,10 +200,10 @@ inline std::vector<std::vector<int>> randomWalkerSegmentation(
     Eigen::SparseMatrix<double> seed_probs(info.n_seeds, k);
     seed_probs.setFromTriplets(seed_triplets.begin(), seed_triplets.end());
 
-    finish_time = std::chrono::steady_clock::now();
-    std::cout << "Time taken to build seed indicator matrix: " << std::chrono::duration_cast<std::chrono::milliseconds>(finish_time - start_time).count() << " milliseconds" << std::endl;
+    // finish_time = std::chrono::steady_clock::now();
+    // std::cout << "Time taken to build seed indicator matrix: " << std::chrono::duration_cast<std::chrono::milliseconds>(finish_time - start_time).count() << " milliseconds" << std::endl;
 
-    start_time = std::chrono::steady_clock::now();
+    // start_time = std::chrono::steady_clock::now();
 
     // Solve the linear system using an SPD-specific solver
     using LaplacianSolver = Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>>;
@@ -227,10 +227,10 @@ inline std::vector<std::vector<int>> randomWalkerSegmentation(
         }
     }
 
-    finish_time = std::chrono::steady_clock::now();
-    std::cout << "Time taken to solve linear system: " << std::chrono::duration_cast<std::chrono::milliseconds>(finish_time - start_time).count() << " milliseconds" << std::endl;
+    // finish_time = std::chrono::steady_clock::now();
+    // std::cout << "Time taken to solve linear system: " << std::chrono::duration_cast<std::chrono::milliseconds>(finish_time - start_time).count() << " milliseconds" << std::endl;
 
-    start_time = std::chrono::steady_clock::now();
+    // start_time = std::chrono::steady_clock::now();
 
     // Normalize and extract labels
     detail::normalizeProbabilities(probs);
@@ -250,8 +250,8 @@ inline std::vector<std::vector<int>> randomWalkerSegmentation(
         );
     }
 
-    finish_time = std::chrono::steady_clock::now();
-    std::cout << "Time taken to build final segments: " << std::chrono::duration_cast<std::chrono::milliseconds>(finish_time - start_time).count() << " milliseconds" << std::endl;
+    // finish_time = std::chrono::steady_clock::now();
+    // std::cout << "Time taken to build final segments: " << std::chrono::duration_cast<std::chrono::milliseconds>(finish_time - start_time).count() << " milliseconds" << std::endl;
 
     return result.segments;
 }
