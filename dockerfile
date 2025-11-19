@@ -31,10 +31,15 @@ RUN python3 -m venv /opt/venv && \
         numpy "laspy[laszip]" \
         pybind11 \
         scikit-build-core \
-        ninja
+        ninja plyfile lazrs viser
 
 ENV PATH="/opt/venv/bin:${PATH}"
 
 WORKDIR /workspace
+
+ENV VISER_HOST=0.0.0.0 \
+    VISER_PORT=8080
+
+EXPOSE 8080
 
 CMD ["/bin/bash"]

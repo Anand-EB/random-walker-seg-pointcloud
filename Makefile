@@ -2,7 +2,7 @@
 
 DOCKER_IMAGE ?= pc-rwalker-dev
 DOCKER_FILE ?= dockerfile
-DOCKER_RUN_FLAGS ?= --rm -it -v $(PWD):/workspace -w /workspace
+DOCKER_RUN_FLAGS ?= --rm -it -v $(PWD):/workspace -w /workspace -p 8080:8080
 
 build-docker:
 	docker build -t $(DOCKER_IMAGE) -f $(DOCKER_FILE) .
